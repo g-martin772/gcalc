@@ -1,4 +1,10 @@
-﻿### DotnetCore template
+﻿# Custom
+
+.idea/
+.junie/
+
+
+### DotnetCore template
 # .NET Core build folders
 bin/
 obj/
