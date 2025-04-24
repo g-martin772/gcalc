@@ -1,0 +1,87 @@
+<div style="@Style; height: fit-content;">
+    @if (Template == null)
+    {
+        @((MarkupString)Output)
+    }
+    else
+    {
+        @Template(Output)
+    }
+</div>
+
+@code {
+
+    private IJSObjectReference? module;
+    [Inject] private IJSRuntime jsRuntime { get; set; } = null!;
+
+    [Parameter] public bool TeXDisplay { get; set; } = true;
+    [Parameter] public EventCallback<string> OutputChanged { get; set; }
+    [Parameter] public RenderFragment<string> Template { get; set; } = null!;
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Style { get; set; } = "";
+
+    public string Output { get; private set; } = String.Empty;
+
+    private bool hasRendered = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (hasRendered)
+        {
+            await ProcessValueAsync();
+        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await jsRuntime.InvokeAsync<IJSObjectReference>("import", "./mathJaxBlazor.js");
+            await ProcessValueAsync();
+            hasRendered = true;
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task ProcessValueAsync()
+    {
+        var result = String.Empty;
+        if (!string.IsNullOrWhiteSpace(Value))
+        {
+            if (module != null)
+            {
+                if (Value.StartsWith("<math"))
+                {
+                    result = await module.InvokeAsync<string>("processMathML", Value);
+                }
+                else
+                {
+                    result = await module.InvokeAsync<string>("processLatex", Value, TeXDisplay);
+                }
+            }
+
+            Output = result;
+            await OutputChanged.InvokeAsync(result);
+        }
+        else
+        {
+            Output = "";
+            await OutputChanged.InvokeAsync("");
+        }
+
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module != null)
+        {
+            await module.DisposeAsync();
+        }
+    }
+
+}

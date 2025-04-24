@@ -24,7 +24,7 @@ app.UseAntiforgery();
 app.MapDefaultEndpoints();
 
 app.MapStaticAssets();
-app.MapRazorComponents<App.Components.App>()
+app.MapRazorComponents<Gcalc.App.Components.App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
