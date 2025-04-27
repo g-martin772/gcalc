@@ -1,33 +1,40 @@
 @page "/calc"
+@using System.Text
 @using Gcalc.App.Components.Math
+@using Microsoft.Extensions.AI
+@inject ILogger<Calc> Logger
 
 <PageTitle>Calculator</PageTitle>
-
 
 
 <div style="height: 100%; display: flex; flex-direction: column; gap: 1rem">
     <div
         style="display: flex; flex-direction: column-reverse; gap: 1rem;height: calc(100% - 100px); overflow-y: scroll;padding-bottom: 1rem">
 
-        @for (int i = 0; i < 100; i++)
+        @foreach (var entry in m_History)
         {
-            <div style="margin-left: auto">
-
-                <Equation Value="\frac{d}{dx}\left( \int_{0}^{x} f(u)\,du\right)=f(x)"/>
-            </div>
-            <div style="margin-right: auto">
-                <Equation Value="\frac{d}{dx}\left( \int_{0}^{x} f(u)\,du\right)=f(x)"/>
+            var css = entry.Right ? "margin-left: auto" : "margin-right: auto";
+            var color = entry.Type switch
+            {
+                EType.Error => "color: red",
+                EType.Calculator => "color: white",
+                EType.Llm => "color: light-gray",
+                EType.User => "color: white",
+                _ => throw new ArgumentOutOfRangeException()
+            };
+            <div style="@css; @color; max-height: 80px; height: fit-content; width: fit-content;">
+                <Equation Value="@entry.Value" TeXDisplay="true"/>
             </div>
         }
     </div>
     <div
         style="height: 100px; padding-right: 1rem; display: flex; align-items: center; justify-content: center;flex-direction: row">
-        <FluentTextArea style="width: 50%; margin-top: -1rem" Rows="4"
+        <FluentTextArea style="width: 50%; margin-top: -1rem" Rows="4" Disabled="@m_IsGenerating"
                         @bind-Value="@Input"
-                        @onkeydown="@(args =>
+                        @onkeydown="@(async args =>
                                     {
                                         if (args.Key == "Enter")
-                                            OnSubmit();
+                                            await OnSubmit();
                                     })"/>
         <div
             style="width: 50%; height: 100px; border: 2px solid var(--neutral-stroke-rest); border-radius: 4px; padding: 0.5rem; margin: 0.5rem 0.5rem 1.5rem 1rem;">
@@ -38,7 +45,23 @@
 
 
 @code {
-    private string m_Input  = string.Empty;
+    private string m_Input = string.Empty;
+
+    private readonly CalculatorHistory m_History = [];
+    private IChatClient? m_ChatClient;
+    private bool m_IsGenerating;
+
+    private List<ChatMessage> m_ChatHistory =
+    [
+        new(ChatRole.System, @"
+            Your are a pro mathematician, go and help me out here.
+            Use Latex for your entire response. No prefix symbols like $$. Just the plain output.
+            Don't use begin or align statements. You can only output a single line per query.
+            Only do the tasks from the latest request, previous messages are only for context.
+            When asked to solve an equation just give the result. No extra.
+            When asked to explain something, you can do so. Try to keep it as short and simple as possible.
+            ")
+    ];
 
     public string Input
     {
@@ -50,10 +73,58 @@
         }
     }
 
-    private void OnSubmit()
+    protected override void OnInitialized()
     {
+        m_ChatClient = new OllamaChatClient(new Uri("http://localhost:26121/"), "llama3.2:latest");
+    }
+
+    private async Task OnSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(m_Input))
+            return;
+
+        m_History.AddUserEntry(m_Input);
+        m_ChatHistory.Add(new ChatMessage(ChatRole.User, m_Input));
+        StringBuilder output = new();
+        m_IsGenerating = true;
         m_Input = "";
         StateHasChanged();
+
+        await foreach (var item in m_ChatClient!.GetStreamingResponseAsync(m_ChatHistory))
+        {
+            output.Append(item.Text);
+        }
+
+        var result = output.ToString().Replace('$', ' ');
+        Logger.LogInformation("Calculation Result: {Result}", result);
+        m_History.AddCalculatorEntry(result);
+        m_ChatHistory.Add(new ChatMessage(ChatRole.Assistant, result));
+        m_IsGenerating = false;
+        StateHasChanged();
     }
+
+    public class CalculatorHistory : List
+        <CalculatorHistoryEntry>
+    {
+        public void AddErrorEntry(string content) => Insert(0, new CalculatorHistoryEntry(EType.Error, content));
+        public void AddCalculatorEntry(string content) => Insert(0, new CalculatorHistoryEntry(EType.Calculator, content));
+        public void AddLlmEntry(string content) => Insert(0, new CalculatorHistoryEntry(EType.Llm, content));
+        public void AddUserEntry(string content) => Insert(0, new CalculatorHistoryEntry(EType.User, content));
+    }
+
+    public record struct CalculatorHistoryEntry(EType Type, string Value)
+    {
+        public bool Left => Type is EType.User;
+        public bool Right => Type is not EType.User;
+    }
+
+    public enum EType
+    {
+        Error,
+        Calculator,
+        Llm,
+        User
+    }
+
 
 }

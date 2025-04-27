@@ -67,9 +67,9 @@
     private string? response;
     private bool m_IsGenerating = false;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        m_ChatClient = new OllamaChatClient(new Uri("http://localhost:11434/"), "llama3.2:latest");
+        m_ChatClient = new OllamaChatClient(new Uri("http://localhost:26121/"), "llama3.2:latest");
     }
 
     private async Task OnChatInputAsync(KeyboardEventArgs arg)

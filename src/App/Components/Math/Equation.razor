@@ -1,3 +1,5 @@
+@implements IAsyncDisposable
+
 <div style="@Style; height: fit-content;">
     @if (Template == null)
     {
@@ -11,23 +13,23 @@
 
 @code {
 
-    private IJSObjectReference? module;
-    [Inject] private IJSRuntime jsRuntime { get; set; } = null!;
+    private IJSObjectReference? m_Module;
+    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
 
     [Parameter] public bool TeXDisplay { get; set; } = true;
     [Parameter] public EventCallback<string> OutputChanged { get; set; }
-    [Parameter] public RenderFragment<string> Template { get; set; } = null!;
+    [Parameter] public RenderFragment<string>? Template { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Style { get; set; } = "";
 
-    public string Output { get; private set; } = String.Empty;
+    private string Output { get; set; } = String.Empty;
 
-    private bool hasRendered = false;
+    private bool m_HasRendered = false;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (hasRendered)
+        if (m_HasRendered)
         {
             await ProcessValueAsync();
         }
@@ -39,9 +41,9 @@
     {
         if (firstRender)
         {
-            module = await jsRuntime.InvokeAsync<IJSObjectReference>("import", "./mathJaxBlazor.js");
+            m_Module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./mathJaxBlazor.js");
             await ProcessValueAsync();
-            hasRendered = true;
+            m_HasRendered = true;
         }
 
         await base.OnAfterRenderAsync(firstRender);
@@ -52,15 +54,15 @@
         var result = String.Empty;
         if (!string.IsNullOrWhiteSpace(Value))
         {
-            if (module != null)
+            if (m_Module != null)
             {
                 if (Value.StartsWith("<math"))
                 {
-                    result = await module.InvokeAsync<string>("processMathML", Value);
+                    result = await m_Module.InvokeAsync<string>("processMathML", Value);
                 }
                 else
                 {
-                    result = await module.InvokeAsync<string>("processLatex", Value, TeXDisplay);
+                    result = await m_Module.InvokeAsync<string>("processLatex", Value, TeXDisplay);
                 }
             }
 
@@ -78,9 +80,9 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (module != null)
+        if (m_Module != null)
         {
-            await module.DisposeAsync();
+            await m_Module.DisposeAsync();
         }
     }
 
